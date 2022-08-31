@@ -23,6 +23,7 @@ https://huggingface.co/models?filter=masked-lm
 # You can also adapt this script on your own mlm task. Pointers for this are left as comments.
 
 import argparse
+import code
 import logging
 import math
 import os
@@ -45,6 +46,8 @@ from transformers import (
     AutoConfig,
     AutoModelForMaskedLM,
     AutoTokenizer,
+    PreTrainedTokenizer,
+    PreTrainedTokenizerBase,
     DataCollatorForLanguageModeling,
     SchedulerType,
     get_scheduler,
@@ -52,6 +55,7 @@ from transformers import (
 )
 from transformers.file_utils import get_full_repo_name
 from transformers.utils.versions import require_version
+from transformers import T5ForConditionalGeneration, AutoTokenizer
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +79,7 @@ def parse_args():
         help="The configuration name of the dataset to use (via the datasets library).",
     )
     parser.add_argument(
-        "--train_file", type=str, default=None, help="A csv or a json file containing the training data."
+        "--train_file", type=str, default="tiny_shakespeare.txt", help="A csv or a json file containing the training data."
     )
     parser.add_argument(
         "--validation_file", type=str, default=None, help="A csv or a json file containing the validation data."
@@ -93,8 +97,9 @@ def parse_args():
     parser.add_argument(
         "--model_name_or_path",
         type=str,
+        default=None,
         help="Path to pretrained model or model identifier from huggingface.co/models.",
-        required=True,
+        required=False,
     )
     parser.add_argument(
         "--config_name",
@@ -155,19 +160,19 @@ def parse_args():
     parser.add_argument(
         "--num_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler."
     )
-    parser.add_argument("--output_dir", type=str, default=None, help="Where to store the final model.")
+    parser.add_argument("--output_dir", type=str, default="out/run_mlm_no_trainer", help="Where to store the final model.")
     parser.add_argument("--seed", type=int, default=None, help="A seed for reproducible training.")
     parser.add_argument(
         "--model_type",
         type=str,
-        default=None,
+        default="bert",
         help="Model type to use if training from scratch.",
         choices=MODEL_TYPES,
     )
     parser.add_argument(
         "--max_seq_length",
         type=int,
-        default=None,
+        default=512,
         help="The maximum total input sequence length after tokenization. Sequences longer than this will be truncated.",
     )
     parser.add_argument(
@@ -188,7 +193,7 @@ def parse_args():
     parser.add_argument(
         "--mlm_probability", type=float, default=0.15, help="Ratio of tokens to mask for masked language modeling loss"
     )
-    parser.add_argument("--push_to_hub", action="store_true", help="Whether or not to push the model to the Hub.")
+    parser.add_argument("--push_to_hub", action="store_false", help="Whether or not to push the model to the Hub.")
     parser.add_argument(
         "--hub_model_id", type=str, help="The name of the repository to keep in sync with the local `output_dir`."
     )
@@ -208,8 +213,8 @@ def parse_args():
             if extension not in ["csv", "json", "txt"]:
                 raise ValueError("`validation_file` should be a csv, json or txt file.")
 
-    if args.push_to_hub:
-        assert args.output_dir is not None, "Need an `output_dir` to create a repo when `--push_to_hub` is passed."
+    # if args.push_to_hub:
+    #     assert args.output_dir is not None, "Need an `output_dir` to create a repo when `--push_to_hub` is passed."
 
     return args
 
@@ -242,16 +247,16 @@ def main():
         set_seed(args.seed)
 
     # Handle the repository creation
-    if accelerator.is_main_process:
-        if args.push_to_hub:
-            if args.hub_model_id is None:
-                repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
-            else:
-                repo_name = args.hub_model_id
-            repo = Repository(args.output_dir, clone_from=repo_name)
-        elif args.output_dir is not None:
-            os.makedirs(args.output_dir, exist_ok=True)
-    accelerator.wait_for_everyone()
+    # if accelerator.is_main_process:
+    #     if args.push_to_hub:
+    #         if args.hub_model_id is None:
+    #             repo_name = get_full_repo_name(Path(args.output_dir).name, token=args.hub_token)
+    #         else:
+    #             repo_name = args.hub_model_id
+    #         repo = Repository(args.output_dir, clone_from=repo_name)
+    #     elif args.output_dir is not None:
+    #         os.makedirs(args.output_dir, exist_ok=True)
+    # accelerator.wait_for_everyone()
 
     # Get the datasets: you can either provide your own CSV/JSON/TXT training and evaluation files (see below)
     # or just provide the name of one of the public datasets available on the hub at https://huggingface.co/datasets/
@@ -312,17 +317,33 @@ def main():
         config = AutoConfig.from_pretrained(args.model_name_or_path)
     else:
         config = CONFIG_MAPPING[args.model_type]()
-        logger.warning("You are instantiating a new config instance from scratch.")
+        # logger.warning("You are instantiating a new config instance from scratch.")
+        print(("You are instantiating a new config instance from scratch."))
 
     if args.tokenizer_name:
         tokenizer = AutoTokenizer.from_pretrained(args.tokenizer_name, use_fast=not args.use_slow_tokenizer)
     elif args.model_name_or_path:
         tokenizer = AutoTokenizer.from_pretrained(args.model_name_or_path, use_fast=not args.use_slow_tokenizer)
     else:
-        raise ValueError(
-            "You are instantiating a new tokenizer from scratch. This is not supported by this script."
-            "You can do it from another script, save it, and load it from here, using --tokenizer_name."
-        )
+        # raise ValueError(
+        #     "You are instantiating a new tokenizer from scratch. This is not supported by this script."
+        #     "You can do it from another script, save it, and load it from here, using --tokenizer_name."
+        # )
+        # class Dummy_Tokenizer(PreTrainedTokenizerBase):
+        #     def __init__(self):
+        #         super(Dummy_Tokenizer, self).__init__()
+        #         self.model_max_length = 1024
+        #         self.mask_token = '[MASK]'
+        #     def __len__(self):
+        #         return 1024
+        #     def forward(self, x):
+        #         return x
+        #     def pad(self, x, return_tensors, pad_to_multiple_of):
+        #         # assuming that padding is unnecessary because of group_texts()
+        #         return x
+        # tokenizer = Dummy_Tokenizer()
+        tokenizer = AutoTokenizer.from_pretrained("google/byt5-small")
+        tokenizer.mask_token = ['MASK']
 
     if args.model_name_or_path:
         model = AutoModelForMaskedLM.from_pretrained(
@@ -331,7 +352,7 @@ def main():
             config=config,
         )
     else:
-        logger.info("Training new model from scratch")
+        print("Training new model from scratch")
         model = AutoModelForMaskedLM.from_config(config)
 
     model.resize_token_embeddings(len(tokenizer))
@@ -344,14 +365,14 @@ def main():
     if args.max_seq_length is None:
         max_seq_length = tokenizer.model_max_length
         if max_seq_length > 1024:
-            logger.warning(
+            print(
                 f"The tokenizer picked seems to have a very large `model_max_length` ({tokenizer.model_max_length}). "
                 "Picking 1024 instead. You can change that default value by passing --max_seq_length xxx."
             )
             max_seq_length = 1024
     else:
         if args.max_seq_length > tokenizer.model_max_length:
-            logger.warning(
+            print(
                 f"The max_seq_length passed ({args.max_seq_length}) is larger than the maximum length for the"
                 f"model ({tokenizer.model_max_length}). Using max_seq_length={tokenizer.model_max_length}."
             )
@@ -390,7 +411,7 @@ def main():
         # We use `return_special_tokens_mask=True` because DataCollatorForLanguageModeling (see below) is more
         # efficient when it receives the `special_tokens_mask`.
         def tokenize_function(examples):
-            return tokenizer(examples[text_column_name], return_special_tokens_mask=True)
+            return tokenizer(examples[text_column_name])
 
         with accelerator.main_process_first():
             tokenized_datasets = raw_datasets.map(
@@ -406,6 +427,12 @@ def main():
         # max_seq_length.
         def group_texts(examples):
             # Concatenate all texts.
+            # concatenated_examples = ' '.join(examples['text'])
+            # total_length = len(concatenated_examples)
+            # result = [concatenated_examples[i:i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+            # result = {
+            #     'text': result,
+            # }
             concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
             total_length = len(concatenated_examples[list(examples.keys())[0]])
             # We drop the small remainder, we could add padding if the model supported it instead of this drop, you can
@@ -439,8 +466,8 @@ def main():
     eval_dataset = tokenized_datasets["validation"]
 
     # Log a few random samples from the training set:
-    for index in random.sample(range(len(train_dataset)), 3):
-        logger.info(f"Sample {index} of the training set: {train_dataset[index]}.")
+    for index in random.sample(range(len(train_dataset)), 1):
+        print(f"Sample {index} of the training set: {train_dataset[index]}.")
 
     # Data collator
     # This one will take care of randomly masking the tokens.
@@ -540,15 +567,15 @@ def main():
         except OverflowError:
             perplexity = float("inf")
 
-        logger.info(f"epoch {epoch}: perplexity: {perplexity}")
+        print(f"epoch {epoch}: perplexity: {perplexity}")
 
-        if args.push_to_hub and epoch < args.num_train_epochs - 1:
-            accelerator.wait_for_everyone()
-            unwrapped_model = accelerator.unwrap_model(model)
-            unwrapped_model.save_pretrained(args.output_dir, save_function=accelerator.save)
-            if accelerator.is_main_process:
-                tokenizer.save_pretrained(args.output_dir)
-                repo.push_to_hub(commit_message=f"Training in progress epoch {epoch}", blocking=False)
+        # if args.push_to_hub and epoch < args.num_train_epochs - 1:
+        #     accelerator.wait_for_everyone()
+        #     unwrapped_model = accelerator.unwrap_model(model)
+        #     unwrapped_model.save_pretrained(args.output_dir, save_function=accelerator.save)
+        #     if accelerator.is_main_process:
+        #         tokenizer.save_pretrained(args.output_dir)
+                # repo.push_to_hub(commit_message=f"Training in progress epoch {epoch}", blocking=False)
 
     if args.output_dir is not None:
         accelerator.wait_for_everyone()
@@ -556,8 +583,8 @@ def main():
         unwrapped_model.save_pretrained(args.output_dir, save_function=accelerator.save)
         if accelerator.is_main_process:
             tokenizer.save_pretrained(args.output_dir)
-            if args.push_to_hub:
-                repo.push_to_hub(commit_message="End of training")
+            # if args.push_to_hub:
+            #     repo.push_to_hub(commit_message="End of training")
 
 
 if __name__ == "__main__":

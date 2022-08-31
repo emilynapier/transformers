@@ -1,0 +1,21 @@
+{
+  "output_dir": "out/run_mlm",
+  "do_train": true,
+  "do_eval": true,
+  "overwrite_output_dir": true,
+  "dataset_name": null,
+  "train_file": "tiny_shakespeare.txt",
+  "validation_file": null,
+  "validation_split_percentage": 20,
+  "config_name": null,
+  "model_name_or_path": null,
+  "model_type": "bert",
+  "line_by_line": false,
+  "fp16": false,
+  "pad_to_max_length": false,
+  "mlm_probability": 0.15,
+  "max_train_samples": null,
+  "max_eval_samples": null,
+  "max_seq_length": 1024
+}
+
